@@ -8,6 +8,20 @@ Images are optimized for **Python 3.12**, **CANN 9.0.0**, **LLVM 22**, **torch_n
 
 Regional variants are available to speed up package downloads by using local mirrors (APT, PyPI, LLVM, Git).
 
+## 🔧 Development with local Triton-Ascend source
+
+The Docker image **does not** bundle the `triton-ascend` source code. To develop, debug, or modify Triton‑Ascend, you **must** mount your local clone of the repository.
+
+### Step 1: Clone the repository on your host
+
+```bash
+git clone https://gitee.com/ascend/triton-ascend.git /path/to/local/triton-ascend
+```
+
+## 🧩 Using a local CANN installation
+
+The Docker image does **not** bundle the Ascend CANN kernel operators (`.opp` files) because they are host‑specific and depend on the NPU driver version. To make the container work with your NPU, you must mount the host’s CANN directory into the container.
+
 ---
 
 ## 🚀 Quick Start
