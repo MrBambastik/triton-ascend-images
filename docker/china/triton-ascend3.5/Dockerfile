@@ -169,6 +169,7 @@ RUN mkdir -p /opt/scripts && \
     'if [ -d "$C_DIR" ] && [ ! -f "$C_DIR/__init__.py" ]; then' \
     '    echo "from .libtriton import *" > "$C_DIR/__init__.py"' \
     'fi' \
+    'export LD_PRELOAD=/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libmspti.so' \
     'echo "=== 5. Verification ==="' \
     'cd ~' \
     'python3 -c "import torch; print(\"PyTorch:\", torch.__version__)"' \
