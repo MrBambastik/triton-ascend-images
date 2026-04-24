@@ -14,6 +14,12 @@ You do **not** need to build it yourself – just use it directly in the `docker
 
 - If docker images is not preseneted. Run **Dockerfile**
 
+## Inside Dockerfile change ARGS
+- ARG CHIP_NAME=910b  - the chip name for chip on your server
+- ARG CANN_VERSION=9.0.0-beta.2 - you can change CANN version
+- ARG CANN_URL_VERSION=9.0.T511 - you can change CANN url need to check on here https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta2/releasenote/9.0.0-beta.2/release-notes.md
+- ARG LLVM_COMMIT="fad3272286528b8a491085183434c5ad4b59ab92" this version you need to check here https://gitcode.com/Ascend/triton-ascend/blob/main/cmake/llvm-hash.txt based on your commit
+
 ## Run command to build docker
 
 ```bash
