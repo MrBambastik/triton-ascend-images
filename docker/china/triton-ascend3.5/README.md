@@ -9,7 +9,7 @@
 
 ## Base image
 
-The Docker image `triton-ascend-llvm-22-cann-9.0.0_v3.2:latest` is **already available on the server**.  
+The Docker image `triton-ascend-llvm-22-cann-9.0.0_v3.5:latest` is **already available on the server**.  
 You do **not** need to build it yourself – just use it directly in the `docker run` command.
 
 - If docker images is not preseneted. Run **Dockerfile**
@@ -17,7 +17,7 @@ You do **not** need to build it yourself – just use it directly in the `docker
 ## Run command to build docker
 
 ```bash
-    docker build -t triton-ascend-llvm-22-cann-9.0.0_v3.3:latest .
+    docker build -t triton-ascend-llvm-22-cann-9.0.0_v3.5:latest .
 ```
 
 ## 1. Prepare your local source code
@@ -52,7 +52,7 @@ docker run -d --rm \
     -v /<your_mspti_optional>/mspti/:/workspace/mspti \
     -v /<your_working_directory_optional>/triton_workspace/:/workspace \
     -v /<path_to_your_triton-ascend_folder>/triton-ascend/:/workspace/triton-ascend \
-    triton-ascend-llvm-22-cann-9.0.0_v3.3:latest
+    triton-ascend-llvm-22-cann-9.0.0_v3.5:latest
 ```
 
 ### Important
@@ -64,7 +64,7 @@ docker run -d --rm \
 ## 3. Run the container
 
 ```bash
-  docker exec -u root -it g00871023_cann_container_v3.3 /bin/bash
+  docker exec -u root -it <container_name> /bin/bash
 ```
 
 ### Inside the container
