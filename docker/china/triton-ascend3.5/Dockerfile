@@ -68,6 +68,7 @@ RUN if [ -f /opt/llvm-22/bin/llvm-config ] && [ -x /opt/llvm-22/bin/llvm-config 
     -DCMAKE_BUILD_TYPE=Release \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DLLVM_ENABLE_PROJECTS="mlir;clang;lld;llvm" \
+    -DLLVM_ENABLE_RUNTIMES="compiler-rt" \
     -DLLVM_TARGETS_TO_BUILD="host;NVPTX;AMDGPU" \
     -DLLVM_ENABLE_LLD=ON \
     -DCMAKE_INSTALL_PREFIX=$LLVM_PREFIX && \
@@ -92,6 +93,9 @@ RUN mkdir -p /opt/scripts && \
     'apt-get install -y vim libboost-dev zlib1g-dev zlib1g' \
     'apt-get remove -y ninja-build' \
     'pip install ninja pyyaml numpy' \
+    'pip install --upgrade setuptools wheel' \
+    'apt-get update && apt-get install -y nlohmann-json3-dev' \
+    'export JSON_SYSPATH=/usr/include/nlohmann' \
     'export PATH=/usr/local/bin:$PATH' \
     'if [ "$(printf '\''%s\n'\'' "$required_cmake_version" "$current_cmake_version" | sort -V | head -n1)" = "$required_cmake_version" ]; then' \
     '    echo "✅ CMake version $current_cmake_version >= $required_cmake_version, skipping upgrade."' \
