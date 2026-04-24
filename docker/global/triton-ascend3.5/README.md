@@ -43,15 +43,12 @@ docker run -d --rm \
     --net=host \
     --name <container_name> \
     -v /usr/local/dcmi:/usr/local/dcmi:ro \
-    -v /usr/local/Ascend:/usr/local/Ascend:ro \
-    -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
     -v /etc/ascend_install.info:/etc/ascend_install.info:ro \
     -v /var/log/npu/:/usr/slog \
     -v /usr/local/sbin/npu-smi:/usr/local/sbin/npu-smi:ro \
     -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
-    -v /<your_mspti_optional>/mspti/:/workspace/mspti \
-    -v /<your_working_directory_optional>/triton_workspace/:/workspace \
-    -v /<path_to_your_triton-ascend_folder>/triton-ascend/:/workspace/triton-ascend \
+    -v /<path_to_workspace>/triton_workspace/:/workspace \
+    -v /<path_to_local_trito>/triton-ascend/:/workspace/triton-ascend \
     triton-ascend-llvm-22-cann-9.0.0_v3.3:latest
 ```
 
@@ -64,7 +61,7 @@ docker run -d --rm \
 ## 3. Run the container
 
 ```bash
-  docker exec -u root -it g00871023_cann_container_v3.3 /bin/bash
+  docker exec -u root -it <container_name> /bin/bash
 ```
 
 ### Inside the container
