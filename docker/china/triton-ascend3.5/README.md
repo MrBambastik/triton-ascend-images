@@ -4,6 +4,7 @@
 
 - Docker installed on the host machine.
 - Ascend NPU drivers and devices available.
+- CANN 9.0.0 available on server to use it inside.
 - **Your own local copy of the `triton-ascend` repository** (recommended branch: `release/3.5.x`).  
   Place it anywhere on your host, e.g. `/home/your_username/Projects/triton-ascend`.
 
