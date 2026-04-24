@@ -29,7 +29,6 @@ You do **not** need to build it yourself – just use it directly in the `docker
 ## 1. Prepare your local source code
 
 - Make sure your `triton-ascend` folder contains the `python` subdirectory.
-- Create the `install_triton.sh` script (see full content below) inside that folder.
 
 ## 2. Run the container
 
