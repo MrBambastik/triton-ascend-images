@@ -124,7 +124,7 @@ RUN if [ -f /opt/llvm-22/bin/llvm-config ] && [ -x /opt/llvm-22/bin/llvm-config 
     update-alternatives --install /usr/bin/lld lld /usr/bin/lld-15 100 && \
     if [ ! -d /tmp/llvm-project ]; then \
     # git clone --progress --no-checkout https://mirrors.tuna.tsinghua.edu.cn/git/llvm-project.git /tmp/llvm-project; \
-    git clone --progress --no-checkout https://gitcode.com/GitHub_Trending/ll/4-project.git /tmp/llvm-project; \
+    git clone --progress --no-checkout https://gitcode.com/GitHub_Trending/ll/llvm-project.git /tmp/llvm-project; \
     else \
     echo "Using existing /tmp/llvm-project (cache)"; \
     fi && \
