@@ -1,0 +1,187 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ENV PIP_PROGRESS_BAR=off
+
+RUN find /etc/apt/apt.conf.d/ -type f -exec sed -i '/Post-Invoke/d' {} \; 2>/dev/null || true
+
+# ------------------------------------------------------------------
+# 1. APT sources (Tsinghua, clean jammy)
+# ------------------------------------------------------------------
+# 1. Add mirrors for apt to install ca-certificates and basic packages
+RUN rm -f /etc/apt/sources.list && \
+    printf '%s\n' \
+    "deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ jammy main restricted universe multiverse" \
+    "deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ jammy-updates main restricted universe multiverse" \
+    "deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ jammy-backports main restricted universe multiverse" \
+    "deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ jammy-security main restricted universe multiverse" \
+    > /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates wget curl gnupg && \
+    apt-get clean
+
+RUN sed -i 's|http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/|https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/|g' /etc/apt/sources.list && \
+    apt-get update
+
+# Install system dependencies and Python 3.12
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential patchelf ccache git wget curl \
+    clang-15 lld-15 libssl-dev libbz2-dev libffi-dev liblzma-dev file \
+    software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends python3.12 python3.12-dev python3.12-venv && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python3 && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python && \
+    wget https://bootstrap.pypa.io/get-pip.py && python3 get-pip.py && rm get-pip.py && \
+    apt-get clean
+
+# Update CMake
+RUN pip install cmake==3.28.1
+RUN pip install ninja pybind11
+RUN ln -sf /usr/bin/python3.12 /usr/bin/python3
+ENV PATH="/usr/local/bin:${PATH}"
+
+RUN if [ -f /opt/llvm-22/bin/llvm-config ] && [ -x /opt/llvm-22/bin/llvm-config ]; then \
+    echo "✅ LLVM 22 already installed at /opt/llvm-22. Skipping build."; \
+    else \
+    echo "🔨 Building LLVM 22 with MLIR (30–40 min)..."; \
+    LLVM_PREFIX="/opt/llvm-22"; \
+    LLVM_COMMIT="fad3272286528b8a491085183434c5ad4b59ab92"; \
+    update-alternatives --install /usr/bin/clang clang /usr/bin/clang-15 100 && \
+    update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-15 100 && \
+    update-alternatives --install /usr/bin/lld lld /usr/bin/lld-15 100 && \
+    if [ ! -d /tmp/llvm-project ]; then \
+    git clone --progress --no-checkout https://gitcode.com/GitHub_Trending/ll/llvm-project.git /tmp/llvm-project; \
+    else \
+    echo "Using existing /tmp/llvm-project (cache)"; \
+    fi && \
+    cd /tmp/llvm-project && git checkout $LLVM_COMMIT && \
+    wget -c --show-progress -O fad3272.patch https://raw.gitcode.com/Ascend/triton-ascend/blobs/2b0a06eb21438359d6d0576b622e3bb5e0292d17/fad3272.patch && \
+    git apply fad3272.patch && \
+    mkdir -p build && cd build && \
+    cmake ../llvm -G Ninja \
+    -DCMAKE_C_COMPILER=/usr/bin/clang-15 \
+    -DCMAKE_CXX_COMPILER=/usr/bin/clang++-15 \
+    -DCMAKE_LINKER=/usr/bin/lld-15 \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DLLVM_ENABLE_ASSERTIONS=ON \
+    -DLLVM_ENABLE_PROJECTS="mlir;clang;lld;llvm" \
+    -DLLVM_ENABLE_RUNTIMES="compiler-rt" \
+    -DLLVM_TARGETS_TO_BUILD="host;NVPTX;AMDGPU" \
+    -DLLVM_ENABLE_LLD=ON \
+    -DCMAKE_INSTALL_PREFIX=$LLVM_PREFIX && \
+    ninja install && \
+    if [ -f bin/FileCheck ]; then cp bin/FileCheck $LLVM_PREFIX/bin/; fi; \
+    fi
+
+ENV LLVM_SYSPATH=/opt/llvm-22
+ENV PATH="/opt/llvm-22/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/opt/llvm-22/lib:${LD_LIBRARY_PATH}"
+
+RUN mkdir -p /opt/scripts && \
+    printf '%s\n' \
+    '#!/bin/bash' \
+    'set -e' \
+    '# ------------------------------------------------------------------' \
+    '# 1. Install CMake 3.28+ (required by AscendNPU-IR)' \
+    '# ------------------------------------------------------------------' \
+    'current_cmake_version=$(cmake --version | head -n1 | cut -d" " -f3)' \
+    'required_cmake_version="3.28.1"' \
+    'apt-get update' \
+    'apt-get install -y vim libboost-dev zlib1g-dev zlib1g' \
+    'apt-get remove -y ninja-build' \
+    'pip install ninja pyyaml numpy' \
+    'pip install --upgrade setuptools wheel' \
+    'apt-get update && apt-get install -y nlohmann-json3-dev' \
+    'export JSON_SYSPATH=/usr/include/nlohmann' \
+    'export PATH=/usr/local/bin:$PATH' \
+    'if [ "$(printf '\''%s\n'\'' "$required_cmake_version" "$current_cmake_version" | sort -V | head -n1)" = "$required_cmake_version" ]; then' \
+    '    echo "✅ CMake version $current_cmake_version >= $required_cmake_version, skipping upgrade."' \
+    'else' \
+    '    apt-get remove -y cmake 2>/dev/null || true' \
+    '    echo "🔧 Upgrading CMake from $current_cmake_version to $required_cmake_version..."' \
+    '    CMAKE_VERSION="3.28.1"' \
+    '    python3 -m pip install cmake==$CMAKE_VERSION' \
+    '    if [ ! -f /usr/local/bin/cmake ]; then' \
+    '        ln -sf $(python3 -c "import sys; print(sys.prefix)")/bin/cmake /usr/local/bin/cmake' \
+    '    fi' \
+    '    export PATH=/usr/local/bin:$PATH' \
+    '    cmake --version' \
+    'fi' \
+    '' \
+    '' \
+    '# ------------------------------------------------------------------' \
+    '# 3. Install torch and torch_npu (if needed)' \
+    '# ------------------------------------------------------------------' \
+    'TORCH_URL="https://download.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl"' \
+    'TORCH_FILE=$(basename "$TORCH_URL")' \
+    'wget --no-check-certificate --progress=bar:force -O "/tmp/$TORCH_FILE" "$TORCH_URL"' \
+    'pip3 install /tmp/torch-2.10.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl' \
+    'rm "/tmp/$TORCH_FILE"' \
+    'echo "=== 3. Installing torch_npu ==="' \
+    'TORCH_NPU_URL="https://gitcode.com/Ascend/pytorch/releases/download/v26.0.0-beta.1-pytorch2.10.0/torch_npu-2.10.0rc3-cp312-cp312-manylinux_2_28_aarch64.whl"' \
+    'wget --no-check-certificate --progress=bar:force  -O /tmp/torch_npu.whl "$TORCH_NPU_URL"' \
+    'if file /tmp/torch_npu.whl | grep -q "Zip archive data"; then' \
+    '    FILENAME=$(basename "$TORCH_NPU_URL" | cut -d "?" -f1)' \
+    '    mv /tmp/torch_npu.whl "/tmp/$FILENAME"' \
+    '    python3 -m pip install "/tmp/$FILENAME"' \
+    '    rm "/tmp/$FILENAME"' \
+    'else' \
+    '    echo "ERROR: not a valid wheel"' \
+    '    exit 1' \
+    'fi' \
+    'echo "=== 4. Building triton-ascend from /workspace/triton-ascend ==="' \
+    'if [ ! -d "/workspace/triton-ascend/python" ]; then' \
+    '    echo "ERROR: /workspace/triton-ascend not mounted"' \
+    '    exit 1' \
+    'fi' \
+    '# ------------------------------------------------------------------' \
+    '# 4. Build Triton-Ascend from source (mounted at /workspace/triton-ascend)' \
+    '# ------------------------------------------------------------------' \
+    'TRITON_SRC="/workspace/triton-ascend"' \
+    'if [ ! -d "$TRITON_SRC/python" ]; then' \
+    '    echo "ERROR: Triton-Ascend source not found at $TRITON_SRC"' \
+    '    exit 1' \
+    'fi' \
+    'cd $TRITON_SRC' \
+    'GCC_VERSION=$(gcc -dumpversion | cut -d. -f1)' \
+    'if [ "$GCC_VERSION" -lt 9 ]; then' \
+    '    echo "GCC version <9 detected. Patching CMakeLists.txt to link stdc++fs..."' \
+    '    sed -i '\''/if (NOT WIN32 AND NOT APPLE)/,/endif()/ s/^#//'\'' CMakeLists.txt' \
+    'fi' \
+    'export LLD_DIR=/opt/llvm-22/lib/cmake/lld' \
+    'export TRITON_APPEND_CMAKE_ARGS="-DTRITON_BUILD_UT=OFF -DLLD_DIR=$LLD_DIR"' \
+    'echo "LLD_DIR = $LLD_DIR"' \
+    'echo "TRITON_APPEND_CMAKE_ARGS = $TRITON_APPEND_CMAKE_ARGS"' \
+    'mkdir -p /root/.triton/llvm/llvm-fad32722-ubuntu-arm64/bin' \
+    'ln -sf /opt/llvm-22/bin/FileCheck /root/.triton/llvm/llvm-fad32722-ubuntu-arm64/bin/FileCheck' \
+    'export TRITON_BUILD_PROTON=ON' \
+    'export TRITON_CODEGEN_BACKENDS="ascend;nvidia;amd"' \
+    'LLVM_SYSPATH=$LLVM_PREFIX' \
+    'TRITON_BUILD_WITH_CCACHE=true' \
+    'TRITON_BUILD_WITH_CLANG_LLD=true' \
+    'TRITON_BUILD_PROTON=ON' \
+    'TRITON_WHEEL_NAME="triton-ascend"' \
+    'TRITON_APPEND_CMAKE_ARGS="-DTRITON_BUILD_UT=OFF -DLLD_DIR=/opt/llvm-22/lib/cmake/lld  -DTRITON_BUILD_PROTON=ON -DTRITON_CODEGEN_BACKENDS=ascend;nvidia;amd"' \
+    'python3 setup.py install' \
+    'source /usr/local/Ascend/ascend-toolkit/set_env.sh' \
+    'echo "✅ Triton-Ascend installed successfully"' \
+    'echo "=== Fixing triton._C module ==="' \
+    'C_DIR=$(python -c "import triton; print(triton.__path__[0] + '\''/_C'\'')" 2>/dev/null || echo "/usr/local/lib/python3.12/dist-packages/triton/_C")' \
+    'if [ -d "$C_DIR" ] && [ ! -f "$C_DIR/__init__.py" ]; then' \
+    '    echo "from .libtriton import *" > "$C_DIR/__init__.py"' \
+    'fi' \
+    'echo "=== 5. Verification ==="' \
+    'cd ~' \
+    'python3 -c "import torch; print(\"PyTorch:\", torch.__version__)"' \
+    'python3 -c "import torch_npu; print(\"torch_npu:\", torch_npu.__version__)"' \
+    'python3 -c "import triton; print(\"Triton:\", triton.__version__)"' \
+    'echo "=== All done ==="' \
+    > /opt/scripts/build.sh && chmod +x /opt/scripts/build.sh
+
+RUN echo "source /usr/local/Ascend/ascend-toolkit/set_env.sh" >> /root/.bashrc
+
+WORKDIR /workspace
+CMD ["tail", "-f", "/dev/null"]

@@ -45,6 +45,7 @@ docker run -d --rm \
     -v /usr/local/dcmi:/usr/local/dcmi:ro \
     -v /usr/local/Ascend:/usr/local/Ascend:ro \
     -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
+     -v /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info:ro \
     -v /etc/ascend_install.info:/etc/ascend_install.info:ro \
     -v /var/log/npu/:/usr/slog \
     -v /usr/local/sbin/npu-smi:/usr/local/sbin/npu-smi:ro \
@@ -71,4 +72,10 @@ docker run -d --rm \
 
 ```bash
 /opt/scripts/build.sh
+```
+
+### (Optional) If you need to use proton with mspti
+
+```bash
+export LD_PRELOAD=/usr/local/Ascend/cann-9.0.0-beta.2/aarch64-linux/lib64/libmspti.so
 ```

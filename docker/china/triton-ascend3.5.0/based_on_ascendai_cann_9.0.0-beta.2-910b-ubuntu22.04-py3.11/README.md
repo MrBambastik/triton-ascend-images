@@ -1,29 +1,21 @@
 # Triton‑Ascend Development Container
 
+### Based on ascendai/cann:9.0.0-beta.2-910b-ubuntu22.04-py3.11 - https://github.com/Ascend/cann-container-image/blob/main/cann/9.0.0-beta.2-910b-ubuntu22.04-py3.11/Dockerfile
+
 ## Prerequisites
 
 - Docker installed on the host machine.
 - Ascend NPU drivers and devices available.
+- CANN 9.0.0beta.2 installed in container.
 - **Your own local copy of the `triton-ascend` repository** (recommended branch: `release/3.5.x`).  
   Place it anywhere on your host, e.g. `/home/your_username/Projects/triton-ascend`.
 
-## Base image
-
-The Docker image `triton-ascend-llvm-22-cann-9.0.0_v3.2:latest` is **already available on the server**.  
-You do **not** need to build it yourself – just use it directly in the `docker run` command.
-
-- If docker images is not preseneted. Run **Dockerfile**
-
-## Inside Dockerfile change ARGS
-- ARG CHIP_NAME=910b  - the chip name for chip on your server
-- ARG CANN_VERSION=9.0.0-beta.2 - you can change CANN version
-- ARG CANN_URL_VERSION=9.0.T511 - you can change CANN url need to check on here https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900beta2/releasenote/9.0.0-beta.2/release-notes.md
-- ARG LLVM_COMMIT="fad3272286528b8a491085183434c5ad4b59ab92" this version you need to check here https://gitcode.com/Ascend/triton-ascend/blob/main/cmake/llvm-hash.txt based on your commit
+- Run docker build **Dockerfile**
 
 ## Run command to build docker
 
 ```bash
-    docker build -t triton-ascend-llvm-22-cann-9.0.0_v3.3:latest .
+    docker build -t triton-ascend-llvm-22-cann-9.0.0-beta.2_v1.0:latest .
 ```
 
 ## 1. Prepare your local source code
@@ -48,13 +40,16 @@ docker run -d --rm \
     --net=host \
     --name <container_name> \
     -v /usr/local/dcmi:/usr/local/dcmi:ro \
+    -v /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro \
+     -v /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info:ro \
     -v /etc/ascend_install.info:/etc/ascend_install.info:ro \
     -v /var/log/npu/:/usr/slog \
     -v /usr/local/sbin/npu-smi:/usr/local/sbin/npu-smi:ro \
     -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
-    -v /<path_to_workspace>/triton_workspace/:/workspace \
-    -v /<path_to_local_trito>/triton-ascend/:/workspace/triton-ascend \
-    triton-ascend-llvm-22-cann-9.0.0_v3.3:latest
+    -v /<your_mspti_optional>/mspti/:/workspace/mspti \
+    -v /<your_working_directory_optional>/triton_workspace/:/workspace \
+    -v /<path_to_your_triton-ascend_folder>/triton-ascend/:/workspace/triton-ascend \
+    triton-ascend-llvm-22-cann-9.0.0-beta.2_v1.0:latest
 ```
 
 ### Important
@@ -73,4 +68,10 @@ docker run -d --rm \
 
 ```bash
 /opt/scripts/build.sh
+```
+
+### (Optional) If you need to use proton with mspti
+
+```bash
+export LD_PRELOAD=/usr/local/Ascend/cann-9.0.0-beta.2/aarch64-linux/lib64/libmspti.so
 ```

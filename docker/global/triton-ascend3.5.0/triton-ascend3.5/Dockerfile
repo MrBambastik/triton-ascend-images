@@ -1,54 +1,124 @@
-FROM ubuntu:22.04
+FROM docker.m.daocloud.io/library/ubuntu:24.04
 
+ARG CHIP_TYPE=A2
+ARG CHIP_NAME=910b
+ARG CANN_VERSION=9.0.0-beta.2
+ARG CANN_URL_VERSION=9.0.T511
+ARG LLVM_COMMIT="fad3272286528b8a491085183434c5ad4b59ab92"
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-ENV PIP_PROGRESS_BAR=off
 
-RUN find /etc/apt/apt.conf.d/ -type f -exec sed -i '/Post-Invoke/d' {} \; 2>/dev/null || true
+ENV SSL_CERT_FILE=/dev/null
 
-# ------------------------------------------------------------------
-# 1. APT sources (Tsinghua, clean jammy)
-# ------------------------------------------------------------------
-# 1. Add mirrors for apt to install ca-certificates and basic packages
-RUN rm -f /etc/apt/sources.list && \
-    printf '%s\n' \
-    "deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ jammy main restricted universe multiverse" \
-    "deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ jammy-updates main restricted universe multiverse" \
-    "deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ jammy-backports main restricted universe multiverse" \
-    "deb http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ jammy-security main restricted universe multiverse" \
-    > /etc/apt/sources.list && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates wget curl gnupg && \
-    apt-get clean
+RUN apt-get update && apt-get install -y \
+    gnupg \
+    ca-certificates \
+    lsb-release \
+    gcc \
+    libbz2-dev \
+    libffi-dev \
+    liblzma-dev \
+    zlib1g-dev \
+    build-essential \
+    wget \
+    curl \
+    git \
+    libreadline-dev \
+    libssl-dev \
+    libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN sed -i 's|http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/|https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/|g' /etc/apt/sources.list && \
-    apt-get update
+# Установка pyenv
+RUN wget --no-check-certificate -O /tmp/Python-3.11.9.tar.xz \
+    "https://mirrors.tuna.tsinghua.edu.cn/python/3.11.9/Python-3.11.9.tar.xz" && \
+    tar -xf /tmp/Python-3.11.9.tar.xz -C /tmp && \
+    cd /tmp/Python-3.11.9 && \
+    ./configure --enable-optimizations --prefix=/usr/local && \
+    make -j$(nproc) && \
+    make altinstall && \
+    cd / && rm -rf /tmp/Python-3.11.9 /tmp/Python-3.11.9.tar.xz
 
-# Install system dependencies and Python 3.12
+# Создание символических ссылок (опционально)
+RUN ln -sf /usr/local/bin/python3.11 /usr/bin/python3 && \
+    ln -sf /usr/local/bin/python3.11 /usr/bin/python && \
+    ln -sf /usr/local/bin/pip3.11 /usr/bin/pip3 && \
+    ln -sf /usr/local/bin/pip3.11 /usr/bin/pip
+
+# Создание виртуального окружения (рекомендуется)
+RUN python3.11 -m venv /opt/venv/triton_env
+ENV PATH="/opt/venv/triton_env/bin:$PATH"
+
+# Проверка (опционально)
+RUN python --version && pip --version
+
+
+# Install system dependencies and Python 3.11
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential patchelf ccache git wget curl \
+    patchelf ccache git \
     clang-15 lld-15 libssl-dev libbz2-dev libffi-dev liblzma-dev file \
     software-properties-common && \
-    add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
-    apt-get install -y --no-install-recommends python3.12 python3.12-dev python3.12-venv && \
-    ln -sf /usr/bin/python3.12 /usr/bin/python3 && \
-    ln -sf /usr/bin/python3.12 /usr/bin/python && \
-    wget https://bootstrap.pypa.io/get-pip.py && python3 get-pip.py && rm get-pip.py && \
     apt-get clean
 
-# Update CMake
-RUN pip install cmake==3.28.1
-RUN pip install ninja pybind11
-RUN ln -sf /usr/bin/python3.12 /usr/bin/python3
-ENV PATH="/usr/local/bin:${PATH}"
 
+
+# 2. Создаем пользователя HwHiAiUser, как в руководстве
+RUN groupadd HwHiAiUser && \
+    useradd -g HwHiAiUser -d /home/HwHiAiUser -m HwHiAiUser -s /bin/bash
+
+
+# Создание рабочей директории для установочных файлов
+WORKDIR /tmp/packages
+
+# Проверка и установка CANN Toolkit
+RUN TOOLKIT_FILE="Ascend-cann_${CANN_VERSION}_linux-aarch64.run"; \
+    if [ -f "$TOOLKIT_FILE" ]; then \
+    echo "✅ Using local $TOOLKIT_FILE"; \
+    cp "$TOOLKIT_FILE" /tmp/; \
+    else \
+    echo "📦 Downloading CANN toolkit..."; \
+    wget --no-check-certificate -O /tmp/"$TOOLKIT_FILE" \
+    "https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%20${CANN_URL_VERSION}/Ascend-cann_${CANN_VERSION}_linux-aarch64.run"; \
+    fi && \
+    chmod +x /tmp/"$TOOLKIT_FILE" && \
+    /tmp/"$TOOLKIT_FILE" --install --quiet
+
+# Проверка и установка Kernel-пакетов
+RUN KERNEL_FILE="Ascend-cann-${CHIP_NAME}-ops_${CANN_VERSION}_linux-aarch64.run"; \
+    if [ -f "$KERNEL_FILE" ]; then \
+    echo "✅ Using local $KERNEL_FILE"; \
+    cp "$KERNEL_FILE" /tmp/; \
+    else \
+    echo "📦 Downloading kernel package..."; \
+    wget --no-check-certificate -O /tmp/"$KERNEL_FILE" \
+    "https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%20${CANN_URL_VERSION}/Ascend-cann-${CHIP_NAME}-ops_${CANN_VERSION}_linux-aarch64.run"; \
+    fi && \
+    chmod +x /tmp/"$KERNEL_FILE" && \
+    /tmp/"$KERNEL_FILE" --install --quiet
+
+# Переменные окружения CANN
+ENV ASCEND_INSTALL_PATH=/usr/local/Ascend
+ENV ASCEND_OPP_PATH=/usr/local/Ascend/opp
+ENV ASCEND_AICPU_PATH=/usr/local/Ascend/ascend-toolkit
+ENV LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64:/usr/local/Ascend/ascend-toolkit/latest/lib64:/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64:/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/device/lib64:/usr/local/Ascend/cann-9.0.0/aarch64-linux/devlib/linux/aarch64:${LD_LIBRARY_PATH}
+ENV PATH=/usr/local/Ascend/ascend-toolkit/latest/bin:${PATH}
+
+# Настройка окружения
+ENV ASCEND_HOME=/usr/local/Ascend
+ENV LD_LIBRARY_PATH=$ASCEND_HOME/driver/lib64:$ASCEND_HOME/ascend-toolkit/latest/lib64:$LD_LIBRARY_PATH
+ENV PATH=$ASCEND_HOME/ascend-toolkit/latest/bin:$PATH
+
+# RUN python3 -c "import acl;print(acl.get_soc_name())"
+
+# Update CMake
+RUN pip install --break-system-packages cmake==3.28.1 ninja pybind11
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python3
+ENV PATH="/usr/local/bin:${PATH}"
+RUN git config --global http.sslVerify false
 RUN if [ -f /opt/llvm-22/bin/llvm-config ] && [ -x /opt/llvm-22/bin/llvm-config ]; then \
     echo "✅ LLVM 22 already installed at /opt/llvm-22. Skipping build."; \
     else \
     echo "🔨 Building LLVM 22 with MLIR (30–40 min)..."; \
     LLVM_PREFIX="/opt/llvm-22"; \
-    LLVM_COMMIT="fad3272286528b8a491085183434c5ad4b59ab92"; \
     update-alternatives --install /usr/bin/clang clang /usr/bin/clang-15 100 && \
     update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-15 100 && \
     update-alternatives --install /usr/bin/lld lld /usr/bin/lld-15 100 && \
@@ -68,7 +138,6 @@ RUN if [ -f /opt/llvm-22/bin/llvm-config ] && [ -x /opt/llvm-22/bin/llvm-config 
     -DCMAKE_BUILD_TYPE=Release \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DLLVM_ENABLE_PROJECTS="mlir;clang;lld;llvm" \
-    -DLLVM_ENABLE_RUNTIMES="compiler-rt" \
     -DLLVM_TARGETS_TO_BUILD="host;NVPTX;AMDGPU" \
     -DLLVM_ENABLE_LLD=ON \
     -DCMAKE_INSTALL_PREFIX=$LLVM_PREFIX && \
@@ -93,9 +162,10 @@ RUN mkdir -p /opt/scripts && \
     'apt-get install -y vim libboost-dev zlib1g-dev zlib1g' \
     'apt-get remove -y ninja-build' \
     'pip install ninja pyyaml numpy' \
-    'pip install --upgrade setuptools wheel' \
+    'pip install --upgrade setuptools wheel python3-distutils' \
     'apt-get update && apt-get install -y nlohmann-json3-dev' \
     'export JSON_SYSPATH=/usr/include/nlohmann' \
+    'source /usr/local/Ascend/cann-9.0.0-beta.2/set_env.sh' \
     'export PATH=/usr/local/bin:$PATH' \
     'if [ "$(printf '\''%s\n'\'' "$required_cmake_version" "$current_cmake_version" | sort -V | head -n1)" = "$required_cmake_version" ]; then' \
     '    echo "✅ CMake version $current_cmake_version >= $required_cmake_version, skipping upgrade."' \
@@ -115,13 +185,13 @@ RUN mkdir -p /opt/scripts && \
     '# ------------------------------------------------------------------' \
     '# 3. Install torch and torch_npu (if needed)' \
     '# ------------------------------------------------------------------' \
-    'TORCH_URL="https://download.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl"' \
+    'TORCH_URL="https://download.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl"' \
     'TORCH_FILE=$(basename "$TORCH_URL")' \
     'wget --no-check-certificate --progress=bar:force -O "/tmp/$TORCH_FILE" "$TORCH_URL"' \
-    'pip3 install /tmp/torch-2.10.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl' \
+    'pip3 install /tmp/torch-2.10.0%2Bcpu-cp311-cp311-manylinux_2_28_aarch64.whl' \
     'rm "/tmp/$TORCH_FILE"' \
     'echo "=== 3. Installing torch_npu ==="' \
-    'TORCH_NPU_URL="https://gitcode.com/Ascend/pytorch/releases/download/v26.0.0-beta.1-pytorch2.10.0/torch_npu-2.10.0rc3-cp312-cp312-manylinux_2_28_aarch64.whl"' \
+    'TORCH_NPU_URL="https://gitcode.com/Ascend/pytorch/releases/download/v26.0.0-beta.1-pytorch2.10.0/torch_npu-2.10.0rc3-cp311-cp311-manylinux_2_28_aarch64.whl"' \
     'wget --no-check-certificate --progress=bar:force  -O /tmp/torch_npu.whl "$TORCH_NPU_URL"' \
     'if file /tmp/torch_npu.whl | grep -q "Zip archive data"; then' \
     '    FILENAME=$(basename "$TORCH_NPU_URL" | cut -d "?" -f1)' \
@@ -169,11 +239,10 @@ RUN mkdir -p /opt/scripts && \
     'source /usr/local/Ascend/ascend-toolkit/set_env.sh' \
     'echo "✅ Triton-Ascend installed successfully"' \
     'echo "=== Fixing triton._C module ==="' \
-    'C_DIR=$(python -c "import triton; print(triton.__path__[0] + '\''/_C'\'')" 2>/dev/null || echo "/usr/local/lib/python3.12/dist-packages/triton/_C")' \
+    'C_DIR=$(python -c "import triton; print(triton.__path__[0] + '\''/_C'\'')" 2>/dev/null || echo "/usr/local/lib/python3.11/dist-packages/triton/_C")' \
     'if [ -d "$C_DIR" ] && [ ! -f "$C_DIR/__init__.py" ]; then' \
     '    echo "from .libtriton import *" > "$C_DIR/__init__.py"' \
     'fi' \
-    'export LD_PRELOAD=/usr/local/Ascend/cann-9.0.0/aarch64-linux/lib64/libmspti.so' \
     'echo "=== 5. Verification ==="' \
     'cd ~' \
     'python3 -c "import torch; print(\"PyTorch:\", torch.__version__)"' \
@@ -182,7 +251,6 @@ RUN mkdir -p /opt/scripts && \
     'echo "=== All done ==="' \
     > /opt/scripts/build.sh && chmod +x /opt/scripts/build.sh
 
-RUN echo "source /usr/local/Ascend/ascend-toolkit/set_env.sh" >> /root/.bashrc
 
 WORKDIR /workspace
 CMD ["tail", "-f", "/dev/null"]
