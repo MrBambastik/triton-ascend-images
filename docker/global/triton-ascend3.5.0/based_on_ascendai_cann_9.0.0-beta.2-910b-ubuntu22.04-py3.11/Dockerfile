@@ -18,6 +18,7 @@ RUN if [ -f /opt/llvm-22/bin/llvm-config ] && [ -x /opt/llvm-22/bin/llvm-config 
     else \
     echo "🔨 Building LLVM 22 with MLIR (30–40 min)..."; \
     LLVM_PREFIX="/opt/llvm-22"; \
+    LLVM_COMMIT="fad3272286528b8a491085183434c5ad4b59ab92"; \
     update-alternatives --install /usr/bin/clang clang /usr/bin/clang-15 100 && \
     update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-15 100 && \
     update-alternatives --install /usr/bin/lld lld /usr/bin/lld-15 100 && \
