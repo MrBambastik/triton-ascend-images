@@ -22,7 +22,7 @@ RUN if [ -f /opt/llvm-22/bin/llvm-config ] && [ -x /opt/llvm-22/bin/llvm-config 
     update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-15 100 && \
     update-alternatives --install /usr/bin/lld lld /usr/bin/lld-15 100 && \
     if [ ! -d /tmp/llvm-project ]; then \
-    git clone --progress --no-checkout https://gitcode.com/GitHub_Trending/ll/llvm-project.git /tmp/llvm-project; \
+    git clone --progress --no-checkout https://github.com/llvm/llvm-project.git /tmp/llvm-project; \
     else \
     echo "Using existing /tmp/llvm-project (cache)"; \
     fi && \
